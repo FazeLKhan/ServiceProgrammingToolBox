@@ -187,11 +187,15 @@
         <div class="ams-form-row">
           <div class="ams-form-group">
             <label>Broadband Format</label>
-            <input type="text" id="scriptBroadbandFormat" placeholder="e.g. FRA-CBD-BNG-MSU-01- or GAB-PHASE2-BNG-MSU2-01-">
+            <select id="scriptBroadbandFormat">
+              <option value="">-- Select Format --</option>
+              <option value="FRA-CBD-BNG-MSU-01-">FRA-CBD-BNG-MSU-01-</option>
+              <option value="GAB-PHASE2-BNG-MSU2-01-">GAB-PHASE2-BNG-MSU2-01-</option>
+            </select>
           </div>
           <div class="ams-form-group">
             <label>Node ID</label>
-            <input type="text" id="scriptNodeId" placeholder="e.g. MSU-01, BNG-02, OLT-3/0/4">
+            <input type="text" id="scriptNodeId" placeholder="">
           </div>
         </div>
         <div class="ams-form-group">
