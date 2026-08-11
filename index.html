@@ -67,7 +67,7 @@
         .ams-form-group label { display: block; font-size: 11px; font-weight: 700; color: #64748b; margin-bottom: 7px; text-transform: uppercase; letter-spacing: 0.8px; }
         .ams-form-group input, .ams-form-group textarea, .ams-form-group select { width: 100%; padding: 11px 14px; border-radius: 10px; border: 1px solid #334155; background: #151e2e; color: #e2e8f0; font-size: 14px; outline: none; font-family: inherit; transition: all 0.2s; }
         .ams-form-group input:focus, .ams-form-group textarea:focus, .ams-form-group select:focus { border-color: #22c55e; box-shadow: 0 0 0 3px rgba(34,197,94,0.12); }
-        .ams-form-group textarea { min-height: 300px; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 12.5px; line-height: 1.7; resize: vertical; }
+        .ams-form-group textarea { min-height: 260px; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 12.5px; line-height: 1.7; resize: vertical; }
         .ams-modal-footer { padding: 18px 28px; border-top: 1px solid #1e293b; display: flex; justify-content: flex-end; gap: 12px; }
         .ams-empty { text-align: center; padding: 70px 24px; color: #475569; }
         .ams-empty-icon { font-size: 52px; margin-bottom: 18px; opacity: 0.25; }
@@ -104,6 +104,7 @@
         .ams-loading-spinner { width: 40px; height: 40px; border: 3px solid #1e293b; border-top-color: #22c55e; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 16px; }
         @keyframes spin { to { transform: rotate(360deg); } }
     </style>
+<base target="_blank">
 </head>
 <body>
 
@@ -181,6 +182,16 @@
               <option value="internetvoice">INTERNET & VOICE</option>
               <option value="sip">SIP</option>
             </select>
+          </div>
+        </div>
+        <div class="ams-form-row">
+          <div class="ams-form-group">
+            <label>Broadband Format</label>
+            <input type="text" id="scriptBroadbandFormat" placeholder="e.g. FRA-CBD-BNG-MSU-01- or GAB-PHASE2-BNG-MSU2-01-">
+          </div>
+          <div class="ams-form-group">
+            <label>Node ID</label>
+            <input type="text" id="scriptNodeId" placeholder="e.g. MSU-01, BNG-02, OLT-3/0/4">
           </div>
         </div>
         <div class="ams-form-group">
@@ -287,6 +298,8 @@
       const search = currentSearch.toLowerCase();
       const matchSearch = !search ||
         (s.description && s.description.toLowerCase().includes(search)) ||
+        (s.broadbandFormat && s.broadbandFormat.toLowerCase().includes(search)) ||
+        (s.nodeId && s.nodeId.toLowerCase().includes(search)) ||
         (s.content && s.content.toLowerCase().includes(search)) ||
         (s.vendor && s.vendor.toLowerCase().includes(search));
       return matchVendor && matchService && matchSearch;
@@ -336,8 +349,9 @@
                   <span class="ams-badge ${serviceBadgeClass[s.service] || 'badge-other'}">${serviceLabels[s.service] || s.service}</span>
                 </div>
                 <div class="ams-card-meta">
+                  ${(s.broadbandFormat) ? `<span>📡 ${escapeHtml(truncate(s.broadbandFormat, 28))}</span>` : ''}
+                  ${(s.nodeId) ? `<span>🖥️ ${escapeHtml(truncate(s.nodeId, 20))}</span>` : ''}
                   <span>🕒 ${new Date(s.created).toLocaleDateString()}</span>
-                  <span>👤 ${escapeHtml(truncate(s.createdBy || 'Team', 20))}</span>
                 </div>
               </div>
             `).join('')}
@@ -384,6 +398,8 @@
       <div class="ams-detail-meta">
         <div class="ams-detail-meta-item"><label>Vendor</label><span>${s.vendor.toUpperCase()}</span></div>
         <div class="ams-detail-meta-item"><label>Service</label><span>${serviceLabels[s.service] || s.service}</span></div>
+        ${(s.broadbandFormat) ? `<div class="ams-detail-meta-item"><label>Broadband Format</label><span>${escapeHtml(s.broadbandFormat)}</span></div>` : ''}
+        ${(s.nodeId) ? `<div class="ams-detail-meta-item"><label>Node ID</label><span>${escapeHtml(s.nodeId)}</span></div>` : ''}
         <div class="ams-detail-meta-item"><label>Created</label><span>${new Date(s.created).toLocaleString()}</span></div>
         <div class="ams-detail-meta-item"><label>By</label><span>${escapeHtml(s.createdBy || 'Team')}</span></div>
       </div>
@@ -409,11 +425,15 @@
       const s = scripts[id];
       document.getElementById('scriptVendor').value = s.vendor;
       document.getElementById('scriptService').value = s.service;
+      document.getElementById('scriptBroadbandFormat').value = s.broadbandFormat || '';
+      document.getElementById('scriptNodeId').value = s.nodeId || '';
       document.getElementById('scriptDesc').value = s.description || '';
       document.getElementById('scriptContent').value = s.content;
     } else {
       document.getElementById('scriptVendor').value = 'nokia';
       document.getElementById('scriptService').value = 'internet';
+      document.getElementById('scriptBroadbandFormat').value = '';
+      document.getElementById('scriptNodeId').value = '';
       document.getElementById('scriptDesc').value = '';
       document.getElementById('scriptContent').value = '';
     }
@@ -429,6 +449,8 @@
   function saveScript() {
     const vendor = document.getElementById('scriptVendor').value;
     const service = document.getElementById('scriptService').value;
+    const broadbandFormat = document.getElementById('scriptBroadbandFormat').value.trim();
+    const nodeId = document.getElementById('scriptNodeId').value.trim();
     const description = document.getElementById('scriptDesc').value.trim();
     const content = document.getElementById('scriptContent').value;
 
@@ -440,6 +462,8 @@
     const scriptData = {
       vendor,
       service,
+      broadbandFormat: broadbandFormat || '',
+      nodeId: nodeId || '',
       description: description || 'Untitled Script',
       content,
       created: editingId ? (scripts[editingId]?.created || new Date().toISOString()) : new Date().toISOString(),
