@@ -47,6 +47,7 @@
         .badge-cib { background: rgba(245,158,11,0.12); color: #fbbf24; border: 1px solid rgba(245,158,11,0.2); }
         .badge-internetvoice { background: rgba(139,92,246,0.12); color: #a78bfa; border: 1px solid rgba(139,92,246,0.2); }
         .badge-sip { background: rgba(236,72,153,0.12); color: #f472b6; border: 1px solid rgba(236,72,153,0.2); }
+        .badge-link { background: rgba(34,197,94,0.12); color: #4ade80; border: 1px solid rgba(34,197,94,0.2); }
         .ams-card-desc { font-size: 12.5px; color: #94a3b8; margin: 0 0 14px; line-height: 1.6; }
         .ams-card-meta { display: flex; flex-wrap: wrap; gap: 14px; font-size: 11.5px; color: #64748b; }
         .ams-card-meta span { display: flex; align-items: center; gap: 5px; }
@@ -103,6 +104,23 @@
         .ams-loading { text-align: center; padding: 60px 24px; color: #64748b; }
         .ams-loading-spinner { width: 40px; height: 40px; border: 3px solid #1e293b; border-top-color: #22c55e; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 16px; }
         @keyframes spin { to { transform: rotate(360deg); } }
+        /* TABS */
+        .ams-tabs { display: flex; gap: 4px; background: #0f172a; padding: 0 32px; border-bottom: 1px solid #1e293b; }
+        .ams-tab { padding: 12px 24px; font-size: 13px; font-weight: 600; color: #64748b; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s; background: none; border-top: none; border-left: none; border-right: none; }
+        .ams-tab:hover { color: #94a3b8; }
+        .ams-tab.active { color: #4ade80; border-bottom-color: #22c55e; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        /* LINK CARDS */
+        .link-card { background: #151e2e; border: 1px solid #1e293b; border-radius: 12px; padding: 18px; transition: all 0.2s; position: relative; display: flex; align-items: center; gap: 16px; }
+        .link-card:hover { border-color: #22c55e; transform: translateY(-2px); box-shadow: 0 12px 32px rgba(34,197,94,0.1); }
+        .link-icon { width: 44px; height: 44px; border-radius: 10px; background: #0f172a; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; border: 1px solid #1e293b; }
+        .link-info { flex: 1; min-width: 0; }
+        .link-info h3 { margin: 0 0 6px; font-size: 14.5px; color: #f8fafc; font-weight: 600; }
+        .link-info a { color: #4ade80; font-size: 12.5px; text-decoration: none; word-break: break-all; }
+        .link-info a:hover { text-decoration: underline; }
+        .link-actions { display: flex; gap: 5px; }
+        .link-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 14px; }
     </style>
 <base target="_blank">
 </head>
@@ -117,9 +135,14 @@
     </div>
   </div>
 
+  <div class="ams-tabs">
+    <button class="ams-tab active" onclick="switchTab('scripts')" id="tab-scripts">📜 Scripts</button>
+    <button class="ams-tab" onclick="switchTab('links')" id="tab-links">🔗 Links</button>
+  </div>
+
   <div class="ams-toolbar">
     <div class="ams-search">
-      <input type="text" id="searchInput" placeholder="Search scripts...">
+      <input type="text" id="searchInput" placeholder="Search...">
     </div>
     <select class="ams-filter" id="vendorFilter">
       <option value="all">All Vendors</option>
@@ -134,20 +157,28 @@
       <option value="internetvoice">INTERNET & VOICE</option>
       <option value="sip">SIP</option>
     </select>
-    <button class="ams-btn ams-btn-primary" onclick="openModal()">+ New Script</button>
+    <button class="ams-btn ams-btn-primary" id="addBtn" onclick="openModal()">+ New Script</button>
   </div>
 
   <div class="ams-body" id="mainView">
     <div id="statusBar" class="ams-status-bar">
-      <p>💡 <strong>Pro tip:</strong> Name scripts with clear descriptions for instant findability.</p>
+      <p id="statusText">💡 <strong>Pro tip:</strong> Name scripts with clear descriptions for instant findability.</p>
       <div class="status" id="connectionStatus"><span class="status-dot dot-offline"></span> Connecting...</div>
     </div>
 
-    <div id="scriptsList">
-      <div class="ams-loading">
-        <div class="ams-loading-spinner"></div>
-        <p>Connecting to cloud database...</p>
+    <!-- SCRIPTS TAB -->
+    <div id="scriptsTab" class="tab-content active">
+      <div id="scriptsList">
+        <div class="ams-loading">
+          <div class="ams-loading-spinner"></div>
+          <p>Connecting to cloud database...</p>
+        </div>
       </div>
+    </div>
+
+    <!-- LINKS TAB -->
+    <div id="linksTab" class="tab-content">
+      <div id="linksList"></div>
     </div>
   </div>
 
@@ -158,6 +189,7 @@
     </div>
   </div>
 
+  <!-- SCRIPT MODAL -->
   <div class="ams-modal-overlay" id="modal">
     <div class="ams-modal">
       <div class="ams-modal-header">
@@ -214,6 +246,39 @@
     </div>
   </div>
 
+  <!-- LINK MODAL -->
+  <div class="ams-modal-overlay" id="linkModal">
+    <div class="ams-modal">
+      <div class="ams-modal-header">
+        <h2 id="linkModalTitle">Add New Link</h2>
+        <button class="ams-modal-close" onclick="closeLinkModal()">×</button>
+      </div>
+      <div class="ams-modal-body">
+        <div class="ams-form-group">
+          <label>Link Name *</label>
+          <input type="text" id="linkName" placeholder="e.g. CSRP, Case Management, WLH1">
+        </div>
+        <div class="ams-form-group">
+          <label>URL *</label>
+          <input type="text" id="linkUrl" placeholder="https://...">
+        </div>
+        <div class="ams-form-group">
+          <label>Category</label>
+          <select id="linkCategory">
+            <option value="tools">Tools</option>
+            <option value="monitoring">Monitoring</option>
+            <option value="tickets">Tickets</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+      </div>
+      <div class="ams-modal-footer">
+        <button class="ams-btn ams-btn-ghost" onclick="closeLinkModal()">Cancel</button>
+        <button class="ams-btn ams-btn-primary" onclick="saveLink()">Save Link</button>
+      </div>
+    </div>
+  </div>
+
   <div class="ams-toast" id="toast">Copied to clipboard!</div>
 </div>
 
@@ -235,6 +300,13 @@
     sip: 'badge-sip'
   };
 
+  const linkCategories = {
+    tools: 'Tools',
+    monitoring: 'Monitoring',
+    tickets: 'Tickets',
+    other: 'Other'
+  };
+
   // ========== FIREBASE CONFIG (PRE-BAKED) ==========
   const firebaseConfig = {
     apiKey: "AIzaSyD404Jm9fyxYRNX0_XgddS1cM171S8yUC4",
@@ -248,7 +320,10 @@
 
   // ========== STATE ==========
   let scripts = {};
+  let links = {};
   let editingId = null;
+  let editingLinkId = null;
+  let currentTab = 'scripts';
   let currentVendor = 'all';
   let currentService = 'all';
   let currentSearch = '';
@@ -264,13 +339,19 @@
       updateStatus(true, 'Connected to cloud');
 
       db.ref('scripts').on('value', (snapshot) => {
-        const data = snapshot.val();
-        scripts = data || {};
-        renderScripts();
+        scripts = snapshot.val() || {};
+        if (currentTab === 'scripts') renderScripts();
       }, (err) => {
         updateStatus(false, 'DB error: ' + err.message);
-        showToast('Database error: ' + err.message, true);
       });
+
+      db.ref('links').on('value', (snapshot) => {
+        links = snapshot.val() || {};
+        if (currentTab === 'links') renderLinks();
+      }, (err) => {
+        updateStatus(false, 'DB error: ' + err.message);
+      });
+
     } catch (e) {
       updateStatus(false, 'Init failed: ' + e.message);
       document.getElementById('scriptsList').innerHTML = `
@@ -293,7 +374,37 @@
     }
   }
 
-  // ========== RENDERING ==========
+  // ========== TABS ==========
+  function switchTab(tab) {
+    currentTab = tab;
+    document.querySelectorAll('.ams-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.getElementById('tab-' + tab).classList.add('active');
+    document.getElementById(tab + 'Tab').classList.add('active');
+
+    const addBtn = document.getElementById('addBtn');
+    const vendorFilter = document.getElementById('vendorFilter');
+    const serviceFilter = document.getElementById('serviceFilter');
+    const statusText = document.getElementById('statusText');
+
+    if (tab === 'scripts') {
+      addBtn.textContent = '+ New Script';
+      addBtn.onclick = openModal;
+      vendorFilter.style.display = '';
+      serviceFilter.style.display = '';
+      statusText.innerHTML = '💡 <strong>Pro tip:</strong> Name scripts with clear descriptions for instant findability.';
+      renderScripts();
+    } else {
+      addBtn.textContent = '+ New Link';
+      addBtn.onclick = openLinkModal;
+      vendorFilter.style.display = 'none';
+      serviceFilter.style.display = 'none';
+      statusText.innerHTML = '💡 <strong>Quick access</strong> to all your work portals and tools.';
+      renderLinks();
+    }
+  }
+
+  // ========== SCRIPTS RENDERING ==========
   function renderScripts() {
     const container = document.getElementById('scriptsList');
     const entries = Object.entries(scripts).filter(([id, s]) => {
@@ -366,6 +477,54 @@
     container.innerHTML = html;
   }
 
+  // ========== LINKS RENDERING ==========
+  function renderLinks() {
+    const container = document.getElementById('linksList');
+    const entries = Object.entries(links).filter(([id, l]) => {
+      const search = currentSearch.toLowerCase();
+      const matchSearch = !search ||
+        (l.name && l.name.toLowerCase().includes(search)) ||
+        (l.url && l.url.toLowerCase().includes(search)) ||
+        (l.category && l.category.toLowerCase().includes(search));
+      return matchSearch;
+    });
+
+    if (entries.length === 0) {
+      container.innerHTML = `
+        <div class="ams-empty">
+          <div class="ams-empty-icon">🔗</div>
+          <h3>No links saved</h3>
+          <p>${Object.keys(links).length === 0 ? 'Add your work portals and tools here for quick access.' : 'Try adjusting your search.'}</p>
+        </div>`;
+      return;
+    }
+
+    let html = `
+      <div class="ams-section">
+        <div class="ams-section-header">
+          <span class="ams-section-title">🔗 Work Links & Portals</span>
+          <span class="ams-section-count">${entries.length} link${entries.length > 1 ? 's' : ''}</span>
+        </div>
+        <div class="link-grid">
+          ${entries.map(([id, l]) => `
+            <div class="link-card">
+              <div class="link-icon">🔗</div>
+              <div class="link-info">
+                <h3>${escapeHtml(l.name)}</h3>
+                <a href="${escapeHtml(l.url)}" target="_blank" rel="noopener">${escapeHtml(truncate(l.url, 55))}</a>
+              </div>
+              <div class="link-actions">
+                <button class="ams-icon-btn" onclick="editLink('${id}')" title="Edit">✏️</button>
+                <button class="ams-icon-btn" onclick="deleteLink('${id}')" title="Delete">🗑️</button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>`;
+
+    container.innerHTML = html;
+  }
+
   function truncate(str, len) {
     if (!str) return '';
     return str.length > len ? str.substring(0, len) + '…' : str;
@@ -419,7 +578,7 @@
     document.getElementById('detailView').classList.remove('active');
   }
 
-  // ========== MODAL ==========
+  // ========== SCRIPT MODAL ==========
   function openModal(id = null) {
     if (!isConnected) { showToast('Not connected to cloud yet. Please wait...', true); return; }
     editingId = id;
@@ -515,6 +674,72 @@
     }
   }
 
+  // ========== LINK MODAL ==========
+  function openLinkModal(id = null) {
+    if (!isConnected) { showToast('Not connected to cloud yet. Please wait...', true); return; }
+    editingLinkId = id;
+    document.getElementById('linkModalTitle').textContent = id ? 'Edit Link' : 'Add New Link';
+
+    if (id) {
+      const l = links[id];
+      document.getElementById('linkName').value = l.name;
+      document.getElementById('linkUrl').value = l.url;
+      document.getElementById('linkCategory').value = l.category || 'other';
+    } else {
+      document.getElementById('linkName').value = '';
+      document.getElementById('linkUrl').value = '';
+      document.getElementById('linkCategory').value = 'tools';
+    }
+
+    document.getElementById('linkModal').classList.add('active');
+  }
+
+  function closeLinkModal() {
+    document.getElementById('linkModal').classList.remove('active');
+    editingLinkId = null;
+  }
+
+  function saveLink() {
+    const name = document.getElementById('linkName').value.trim();
+    const url = document.getElementById('linkUrl').value.trim();
+    const category = document.getElementById('linkCategory').value;
+
+    if (!name || !url) {
+      showToast('Link name and URL are required!', true);
+      return;
+    }
+
+    const linkData = {
+      name,
+      url,
+      category,
+      created: editingLinkId ? (links[editingLinkId]?.created || new Date().toISOString()) : new Date().toISOString(),
+      updated: new Date().toISOString()
+    };
+
+    if (editingLinkId) {
+      db.ref('links/' + editingLinkId).set(linkData)
+        .then(() => { showToast('Link updated!'); closeLinkModal(); })
+        .catch(err => showToast('Error: ' + err.message, true));
+    } else {
+      const newId = db.ref('links').push().key;
+      db.ref('links/' + newId).set(linkData)
+        .then(() => { showToast('Link saved to cloud!'); closeLinkModal(); })
+        .catch(err => showToast('Error: ' + err.message, true));
+    }
+  }
+
+  function editLink(id) {
+    openLinkModal(id);
+  }
+
+  function deleteLink(id) {
+    if (!confirm('Delete this link?')) return;
+    db.ref('links/' + id).remove()
+      .then(() => showToast('Link deleted'))
+      .catch(err => showToast('Error: ' + err.message, true));
+  }
+
   function showToast(msg, isError = false) {
     const toast = document.getElementById('toast');
     toast.textContent = msg;
@@ -526,7 +751,8 @@
   // ========== EVENT LISTENERS ==========
   document.getElementById('searchInput').addEventListener('input', (e) => {
     currentSearch = e.target.value;
-    renderScripts();
+    if (currentTab === 'scripts') renderScripts();
+    else renderLinks();
   });
 
   document.getElementById('vendorFilter').addEventListener('change', (e) => {
@@ -541,6 +767,10 @@
 
   document.getElementById('modal').addEventListener('click', (e) => {
     if (e.target === document.getElementById('modal')) closeModal();
+  });
+
+  document.getElementById('linkModal').addEventListener('click', (e) => {
+    if (e.target === document.getElementById('linkModal')) closeLinkModal();
   });
 
   // ========== BOOT ==========
