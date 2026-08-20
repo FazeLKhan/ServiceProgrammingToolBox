@@ -159,6 +159,7 @@
         .cloud-status.pending { color: #fbbf24; border-color: rgba(251,191,36,0.3); }
         .cloud-status.offline { color: #f87171; border-color: rgba(248,113,113,0.3); }
     </style>
+<base target="_blank">
 </head>
 <body>
 
@@ -189,6 +190,9 @@
     <button class="ams-tab" data-tab="metro" onclick="switchTab('metro')">
       <span class="tab-icon">🚇</span> Metro <span class="tab-badge" id="metroCount">0</span>
     </button>
+    <button class="ams-tab" data-tab="timesheet" onclick="switchTab('timesheet')">
+      <span class="tab-icon">📅</span> Timesheet <span class="tab-badge" id="timesheetCount">0</span>
+    </button>
     <button class="ams-tab" data-tab="settings" onclick="switchTab('settings')">
       <span class="tab-icon">⚙️</span> Settings
     </button>
@@ -203,6 +207,13 @@
     <button class="ams-sub-tab" data-vendor="voice" onclick="filterVendor('voice')">Voice</button>
     <button class="ams-sub-tab" data-vendor="cib" onclick="filterVendor('cib')">CIB</button>
     <button class="ams-sub-tab" data-vendor="sip" onclick="filterVendor('sip')">SIP</button>
+  </div>
+
+  <!-- SUB TABS for Timesheet -->
+  <div class="ams-sub-tabs" id="timesheetSubTabs">
+    <button class="ams-sub-tab active" data-ts-type="all" onclick="filterTimesheet('all')">All Entries</button>
+    <button class="ams-sub-tab" data-ts-type="overtime" onclick="filterTimesheet('overtime')">Overtime</button>
+    <button class="ams-sub-tab" data-ts-type="standby" onclick="filterTimesheet('standby')">Standby</button>
   </div>
 
   <!-- TOOLBAR -->
@@ -274,6 +285,22 @@
     </div>
   </div>
 
+  <!-- TIMESHEET TAB -->
+  <div class="ams-tab-content" id="timesheetTab">
+    <div class="ams-body" id="timesheetBody">
+      <div class="ams-loading" id="timesheetLoading">
+        <div class="ams-loading-spinner"></div>
+        <p>Loading timesheet entries...</p>
+      </div>
+      <div id="timesheetGrid" class="ams-grid" style="display:none;"></div>
+      <div class="ams-empty" id="timesheetEmpty" style="display:none;">
+        <div class="ams-empty-icon">📅</div>
+        <h3>No timesheet entries</h3>
+        <p>Add your first overtime or standby record.</p>
+      </div>
+    </div>
+  </div>
+
   <!-- SETTINGS TAB -->
   <div class="ams-tab-content" id="settingsTab">
     <div class="ams-body">
@@ -339,6 +366,7 @@
               <option value="script">Script</option>
               <option value="link">Link</option>
               <option value="metro">Metro</option>
+              <option value="timesheet">Timesheet</option>
             </select>
           </div>
           <div class="ams-form-group">
@@ -362,6 +390,23 @@
         <div class="ams-form-group" id="urlGroup" style="display:none;">
           <label>URL</label>
           <input type="text" id="itemUrl" placeholder="https://...">
+        </div>
+        <div class="ams-form-row" id="timesheetGroup" style="display:none;">
+          <div class="ams-form-group">
+            <label>Entry Type</label>
+            <select id="tsType">
+              <option value="overtime">Overtime</option>
+              <option value="standby">Standby</option>
+            </select>
+          </div>
+          <div class="ams-form-group">
+            <label>Date</label>
+            <input type="date" id="tsDate">
+          </div>
+        </div>
+        <div class="ams-form-group" id="tsHoursGroup" style="display:none;">
+          <label>Hours</label>
+          <input type="number" id="tsHours" placeholder="8" step="0.5">
         </div>
         <div class="ams-form-group">
           <label>Description</label>
@@ -425,16 +470,25 @@
 // ========================
 // DATA STORE
 // ========================
-let db = { scripts: [], links: [], metro: [] };
+let db = { scripts: [], links: [], metro: [], timesheets: [] };
 let currentTab = 'scripts';
 let currentVendor = 'all';
 let currentFilter = 'all';
+let currentTimesheetFilter = 'all';
 let currentSearch = '';
 let editingId = null;
 let editingType = null;
 let firebaseApp = null;
 let firebaseDb = null;
 let isOnline = false;
+
+// ========================
+// STORE HELPER
+// ========================
+function getStore(type) {
+  const map = { script: 'scripts', link: 'links', metro: 'metro', timesheet: 'timesheets' };
+  return db[map[type] || type + 's'];
+}
 
 // ========================
 // FIREBASE SETUP
@@ -525,7 +579,7 @@ function loadFromLocal() {
     try {
       db = JSON.parse(saved);
     } catch (e) {
-      db = { scripts: [], links: [], metro: [] };
+      db = { scripts: [], links: [], metro: [], timesheets: [] };
     }
   }
   renderAll();
@@ -579,6 +633,7 @@ function renderAll() {
   renderScripts();
   renderLinks();
   renderMetro();
+  renderTimesheet();
   updateCounts();
 }
 
@@ -586,6 +641,7 @@ function updateCounts() {
   document.getElementById('scriptCount').textContent = db.scripts.length;
   document.getElementById('linkCount').textContent = db.links.length;
   document.getElementById('metroCount').textContent = db.metro.length;
+  document.getElementById('timesheetCount').textContent = db.timesheets.length;
 }
 
 function getBadgeClass(vendor) {
@@ -724,6 +780,54 @@ function renderMetro() {
   `).join('');
 }
 
+function renderTimesheet() {
+  const grid = document.getElementById('timesheetGrid');
+  const loading = document.getElementById('timesheetLoading');
+  const empty = document.getElementById('timesheetEmpty');
+  loading.style.display = 'none';
+
+  let items = db.timesheets.filter(t => {
+    const matchType = currentTimesheetFilter === 'all' || (t.tsType || '') === currentTimesheetFilter;
+    const matchSearch = !currentSearch || 
+      (t.title || '').toLowerCase().includes(currentSearch) ||
+      (t.desc || '').toLowerCase().includes(currentSearch) ||
+      (t.date || '').toLowerCase().includes(currentSearch);
+    return matchType && matchSearch;
+  });
+
+  items.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+
+  if (items.length === 0) {
+    grid.style.display = 'none';
+    empty.style.display = 'block';
+    return;
+  }
+
+  grid.style.display = 'grid';
+  empty.style.display = 'none';
+
+  grid.innerHTML = items.map(t => `
+    <div class="ams-card" onclick="openDetail('timesheet', '${t.id}')">
+      <div class="ams-card-actions" onclick="event.stopPropagation()">
+        <button class="ams-icon-btn edit" onclick="editItem('timesheet', '${t.id}')" title="Edit">✏️</button>
+        <button class="ams-icon-btn delete" onclick="deleteItem('timesheet', '${t.id}')" title="Delete">🗑️</button>
+      </div>
+      <div class="ams-card-header">
+        <h3 class="ams-card-title">${escapeHtml(t.title)}</h3>
+      </div>
+      <div class="ams-card-badges">
+        <span class="ams-badge ${t.tsType === 'standby' ? 'badge-cib' : 'badge-huawei'}">${(t.tsType || 'OT').toUpperCase()}</span>
+        <span class="ams-badge badge-other">${escapeHtml(t.hours || '0')} HRS</span>
+      </div>
+      <p class="ams-card-desc">${escapeHtml(t.desc || 'No notes')}</p>
+      <div class="ams-card-meta">
+        <span>📅 ${escapeHtml(t.date || 'No date')}</span>
+        <span>⏱️ ${escapeHtml(t.hours || '0')}h</span>
+      </div>
+    </div>
+  `).join('');
+}
+
 // ========================
 // ACTIONS
 // ========================
@@ -739,15 +843,25 @@ function switchTab(tab) {
   if (tab === 'scripts') {
     document.getElementById('scriptSubTabs').classList.add('active');
   }
+  if (tab === 'timesheet') {
+    document.getElementById('timesheetSubTabs').classList.add('active');
+  }
 
   renderAll();
 }
 
 function filterVendor(vendor) {
   currentVendor = vendor;
-  document.querySelectorAll('.ams-sub-tab').forEach(t => t.classList.remove('active'));
-  document.querySelector(`[data-vendor="${vendor}"]`).classList.add('active');
+  document.querySelectorAll('#scriptSubTabs .ams-sub-tab').forEach(t => t.classList.remove('active'));
+  document.querySelector(`#scriptSubTabs [data-vendor="${vendor}"]`).classList.add('active');
   renderScripts();
+}
+
+function filterTimesheet(tsType) {
+  currentTimesheetFilter = tsType;
+  document.querySelectorAll('#timesheetSubTabs .ams-sub-tab').forEach(t => t.classList.remove('active'));
+  document.querySelector(`#timesheetSubTabs [data-ts-type="${tsType}"]`).classList.add('active');
+  renderTimesheet();
 }
 
 function handleSearch() {
@@ -765,7 +879,7 @@ function handleFilter() {
 // ========================
 function openModal(type) {
   editingId = null;
-  editingType = type || currentTab === 'settings' ? 'script' : currentTab;
+  editingType = type || (currentTab === 'settings' ? 'script' : currentTab);
   document.getElementById('modalTitle').textContent = 'Add New Item';
   document.getElementById('itemType').value = editingType;
   document.getElementById('itemVendor').value = 'nokia';
@@ -773,6 +887,9 @@ function openModal(type) {
   document.getElementById('itemUrl').value = '';
   document.getElementById('itemDesc').value = '';
   document.getElementById('itemScript').value = '';
+  document.getElementById('tsType').value = 'overtime';
+  document.getElementById('tsDate').value = '';
+  document.getElementById('tsHours').value = '';
   onTypeChange();
   document.getElementById('modalOverlay').classList.add('active');
 }
@@ -787,16 +904,29 @@ function onTypeChange() {
   const type = document.getElementById('itemType').value;
   const urlGroup = document.getElementById('urlGroup');
   const scriptGroup = document.getElementById('scriptGroup');
+  const timesheetGroup = document.getElementById('timesheetGroup');
+  const tsHoursGroup = document.getElementById('tsHoursGroup');
 
   if (type === 'link') {
     urlGroup.style.display = 'block';
     scriptGroup.style.display = 'none';
+    timesheetGroup.style.display = 'none';
+    tsHoursGroup.style.display = 'none';
   } else if (type === 'metro') {
     urlGroup.style.display = 'none';
     scriptGroup.style.display = 'none';
+    timesheetGroup.style.display = 'none';
+    tsHoursGroup.style.display = 'none';
+  } else if (type === 'timesheet') {
+    urlGroup.style.display = 'none';
+    scriptGroup.style.display = 'none';
+    timesheetGroup.style.display = 'grid';
+    tsHoursGroup.style.display = 'block';
   } else {
     urlGroup.style.display = 'none';
     scriptGroup.style.display = 'block';
+    timesheetGroup.style.display = 'none';
+    tsHoursGroup.style.display = 'none';
   }
 }
 
@@ -831,13 +961,26 @@ function saveItem() {
     author: 'User'
   };
 
+  if (type === 'timesheet') {
+    const tsType = document.getElementById('tsType').value;
+    const tsDate = document.getElementById('tsDate').value;
+    const tsHours = document.getElementById('tsHours').value;
+    if (!tsDate) { showToast('Date is required', 'error'); return; }
+    if (!tsHours || parseFloat(tsHours) <= 0) { showToast('Valid hours are required', 'error'); return; }
+    item.tsType = tsType;
+    item.date = tsDate;
+    item.hours = tsHours;
+    item.vendor = tsType;
+  }
+
   if (editingId && editingType) {
-    const idx = db[editingType + 's'].findIndex(x => x.id === editingId);
+    const store = getStore(editingType);
+    const idx = store.findIndex(x => x.id === editingId);
     if (idx !== -1) {
-      db[editingType + 's'][idx] = item;
+      store[idx] = item;
     }
   } else {
-    db[type + 's'].push(item);
+    getStore(type).push(item);
   }
 
   saveToLocal();
@@ -864,6 +1007,9 @@ function editItem(type, id) {
   document.getElementById('itemUrl').value = item.url || '';
   document.getElementById('itemDesc').value = item.desc || '';
   document.getElementById('itemScript').value = item.script || '';
+  document.getElementById('tsType').value = item.tsType || 'overtime';
+  document.getElementById('tsDate').value = item.date || '';
+  document.getElementById('tsHours').value = item.hours || '';
   onTypeChange();
   document.getElementById('modalOverlay').classList.add('active');
 }
@@ -893,19 +1039,37 @@ function openDetail(type, id) {
   currentDetail = { type, id, item };
 
   document.getElementById('detailTitle').textContent = item.title;
-  document.getElementById('detailVendors').innerHTML = `
-    <span class="ams-badge ${getBadgeClass(item.vendor)}">${(item.vendor || 'Other').toUpperCase()}</span>
-  `;
   document.getElementById('detailMeta').textContent = `Added on ${formatDate(item.created)} • Last updated ${formatDate(item.updated)}`;
-  document.getElementById('detailScript').textContent = item.script || item.desc || '(No content)';
 
-  const metaGrid = document.getElementById('detailMetaGrid');
-  metaGrid.innerHTML = `
-    <div class="ams-detail-meta-item"><label>Type</label><span>${(item.type || type).toUpperCase()}</span></div>
-    <div class="ams-detail-meta-item"><label>Vendor</label><span>${(item.vendor || 'N/A').toUpperCase()}</span></div>
-    <div class="ams-detail-meta-item"><label>Author</label><span>${escapeHtml(item.author || 'Unknown')}</span></div>
-    ${item.url ? `<div class="ams-detail-meta-item"><label>URL</label><span style="word-break:break-all;"><a href="${escapeHtml(item.url)}" target="_blank" style="color:#60a5fa;">${escapeHtml(item.url)}</a></span></div>` : ''}
-  `;
+  if (type === 'timesheet') {
+    document.getElementById('detailVendors').innerHTML = `
+      <span class="ams-badge ${item.tsType === 'standby' ? 'badge-cib' : 'badge-huawei'}">${(item.tsType || 'OT').toUpperCase()}</span>
+    `;
+    document.getElementById('detailScript').textContent = 
+`Type: ${item.tsType?.toUpperCase() || 'N/A'}
+Date: ${item.date || 'N/A'}
+Hours: ${item.hours || 'N/A'}
+Notes: ${item.desc || 'None'}`;
+    const metaGrid = document.getElementById('detailMetaGrid');
+    metaGrid.innerHTML = `
+      <div class="ams-detail-meta-item"><label>Entry Type</label><span>${(item.tsType || 'N/A').toUpperCase()}</span></div>
+      <div class="ams-detail-meta-item"><label>Date</label><span>${escapeHtml(item.date || 'N/A')}</span></div>
+      <div class="ams-detail-meta-item"><label>Hours</label><span>${escapeHtml(item.hours || 'N/A')}</span></div>
+      <div class="ams-detail-meta-item"><label>Author</label><span>${escapeHtml(item.author || 'Unknown')}</span></div>
+    `;
+  } else {
+    document.getElementById('detailVendors').innerHTML = `
+      <span class="ams-badge ${getBadgeClass(item.vendor)}">${(item.vendor || 'Other').toUpperCase()}</span>
+    `;
+    document.getElementById('detailScript').textContent = item.script || item.desc || '(No content)';
+    const metaGrid = document.getElementById('detailMetaGrid');
+    metaGrid.innerHTML = `
+      <div class="ams-detail-meta-item"><label>Type</label><span>${(item.type || type).toUpperCase()}</span></div>
+      <div class="ams-detail-meta-item"><label>Vendor</label><span>${(item.vendor || 'N/A').toUpperCase()}</span></div>
+      <div class="ams-detail-meta-item"><label>Author</label><span>${escapeHtml(item.author || 'Unknown')}</span></div>
+      ${item.url ? `<div class="ams-detail-meta-item"><label>URL</label><span style="word-break:break-all;"><a href="${escapeHtml(item.url)}" target="_blank" style="color:#60a5fa;">${escapeHtml(item.url)}</a></span></div>` : ''}
+    `;
+  }
 
   document.getElementById('detailView').classList.add('active');
 }
@@ -989,8 +1153,9 @@ function importFromFile(event) {
   reader.onload = (e) => {
     try {
       const data = JSON.parse(e.target.result);
-      if (data.scripts && data.links && data.metro) {
+      if (data.scripts && data.links && data.metro !== undefined) {
         db = data;
+        if (!db.timesheets) db.timesheets = [];
         saveToLocal();
         saveToFirebase();
         renderAll();
@@ -1007,7 +1172,7 @@ function importFromFile(event) {
 
 function clearAllData() {
   if (!confirm('WARNING: This will delete ALL scripts, links and metro data. Are you sure?')) return;
-  db = { scripts: [], links: [], metro: [] };
+  db = { scripts: [], links: [], metro: [], timesheets: [] };
   saveToLocal();
   saveToFirebase();
   renderAll();
