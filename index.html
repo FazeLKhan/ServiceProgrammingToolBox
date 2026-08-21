@@ -578,10 +578,13 @@ async function hashPassword(str) {
 
 async function ensureDefaultPassword() {
   const savedHash = localStorage.getItem('toolbox_password_hash');
-  if (!savedHash) {
+  const version = localStorage.getItem('toolbox_login_version');
+  // If no version marker, this is first run of the default-password edition
+  if (!savedHash || version !== '2') {
     const defaultHash = await hashPassword(DEFAULT_PASSWORD);
     localStorage.setItem('toolbox_password_hash', defaultHash);
     localStorage.setItem('toolbox_password_is_default', 'true');
+    localStorage.setItem('toolbox_login_version', '2');
   }
 }
 
@@ -696,6 +699,7 @@ async function changePassword() {
   const newHash = await hashPassword(newPw);
   localStorage.setItem('toolbox_password_hash', newHash);
   localStorage.removeItem('toolbox_password_is_default');
+  localStorage.setItem('toolbox_login_version', '2');
   msg.style.color = '#4ade80';
   msg.textContent = 'Password changed successfully!';
   document.getElementById('changeCurrentPw').value = '';
